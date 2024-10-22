@@ -1903,6 +1903,17 @@ allow my_server_t localnet_peer_t:peer recv;</programlisting>
         </listitem>
       </varlistentry>
 
+      <varlistentry>
+        <term><varname>BOOTP=</varname></term>
+        <listitem>
+          <para>Takes a boolean. The DHCPv4 client can be configured to communicate with BOOP servers that
+          don't accept Option 53, DHCP Message Type. In this configuration, a BOOTP Request is sent without
+          any options by default. Expects a BOOTREPLY that contains a permanent unique IP assignment.</para>
+
+          <xi:include href="version-info.xml" xpointer="v257"/>
+        </listitem>
+      </varlistentry>
+
       <!-- How to use the DHCP lease -->
 
       <varlistentry>
