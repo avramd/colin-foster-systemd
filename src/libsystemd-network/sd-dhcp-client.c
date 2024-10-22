@@ -104,6 +104,7 @@ struct sd_dhcp_client {
         int socket_priority;
         bool socket_priority_set;
         bool ipv6_acquired;
+        bool bootp;
 };
 
 static const uint8_t default_req_opts[] = {
@@ -745,9 +746,16 @@ static int client_message_init(
         if (!packet)
                 return -ENOMEM;
 
-        r = dhcp_message_init(&packet->dhcp, BOOTREQUEST, client->xid, type,
-                              client->arp_type, client->hw_addr.length, client->hw_addr.bytes,
-                              optlen, &optoffset);
+        if (client->bootp) {
+                r = bootp_message_init(&packet->dhcp, BOOTREQUEST, client->xid, type,
+                                       client->arp_type, client->hw_addr.length, client->hw_addr.bytes,
+                                       optlen, &optoffset);
+        } else {
+                r = dhcp_message_init(&packet->dhcp, BOOTREQUEST, client->xid, type,
+                                      client->arp_type, client->hw_addr.length, client->hw_addr.bytes,
+                                      optlen, &optoffset);
+        }
+
         if (r < 0)
                 return r;
 
@@ -785,6 +793,17 @@ static int client_message_init(
                                client->client_id.raw);
         if (r < 0)
                 return r;
+
+        if (!client->bootp) {
+                /* Some DHCP servers will refuse to issue an DHCP lease if the Client
+                   Identifier option is not set */
+                r = dhcp_option_append(&packet->dhcp, optlen, &optoffset, 0,
+                                       SD_DHCP_OPTION_CLIENT_IDENTIFIER,
+                                       client->client_id_len,
+                                       &client->client_id);
+                if (r < 0)
+                        return r;
+        }
 
         /* RFC2131 section 3.5:
            in its initial DHCPDISCOVER or DHCPREQUEST message, a
