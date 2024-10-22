@@ -2383,7 +2383,7 @@ static sd_dhcp_client *dhcp_client_free(sd_dhcp_client *client) {
 
 DEFINE_TRIVIAL_REF_UNREF_FUNC(sd_dhcp_client, sd_dhcp_client, dhcp_client_free);
 
-int sd_dhcp_client_new(sd_dhcp_client **ret, int anonymize) {
+int sd_dhcp_client_new(sd_dhcp_client **ret, int anonymize, int bootp) {
         const uint8_t *opts;
         size_t n_opts;
         int r;
@@ -2405,6 +2405,7 @@ int sd_dhcp_client_new(sd_dhcp_client **ret, int anonymize) {
                 .max_discover_attempts = UINT64_MAX,
                 .max_request_attempts = 5,
                 .ip_service_type = -1,
+                .bootp = !!bootp,
         };
         /* NOTE: this could be moved to a function. */
         if (anonymize) {
