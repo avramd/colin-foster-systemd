@@ -56,7 +56,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         if (!getenv("SYSTEMD_LOG_LEVEL"))
                 log_set_max_level(LOG_CRIT);
 
-        r = sd_dhcp_client_new(&client, false);
+        r = sd_dhcp_client_new(&client, false, false);
         assert_se(r >= 0);
         assert_se(client);
 

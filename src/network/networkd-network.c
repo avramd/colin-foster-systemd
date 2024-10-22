@@ -406,6 +406,7 @@ int network_load_one(Manager *manager, OrderedHashmap **networks, const char *fi
                 .dhcp_route_table = RT_TABLE_MAIN,
                 .dhcp_ip_service_type = -1,
                 .dhcp_broadcast = -1,
+                .dhcp_send_bootp = false,
 
                 .dhcp6_use_address = true,
                 .dhcp6_use_pd_prefix = true,

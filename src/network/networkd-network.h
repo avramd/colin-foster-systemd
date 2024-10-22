@@ -161,6 +161,7 @@ struct Network {
         OrderedHashmap *dhcp_client_send_options;
         OrderedHashmap *dhcp_client_send_vendor_options;
         char *dhcp_netlabel;
+        bool dhcp_send_bootp;
 
         /* DHCPv6 Client support */
         bool dhcp6_use_address;
