@@ -1979,7 +1979,7 @@ static int client_handle_message(sd_dhcp_client *client, DHCPMessage *message, s
                 if (r < 0)
                         return 0; /* invalid message, let's ignore it */
 
-                if (client->lease->rapid_commit)
+                if (client->lease->rapid_commit || client->bootp)
                         /* got a successful rapid commit */
                         return client_enter_bound(client, r);
 
