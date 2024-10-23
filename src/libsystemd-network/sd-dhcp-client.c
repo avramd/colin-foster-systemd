@@ -1756,11 +1756,43 @@ static int client_handle_message(sd_dhcp_client *client, DHCPMessage *message, i
                 client->state = DHCP_STATE_REQUESTING;
                 client->attempt = 0;
 
-                r = event_reset_time(client->event, &client->timeout_resend,
-                                     CLOCK_BOOTTIME,
-                                     0, 0,
-                                     client_timeout_resend, client,
-                                     client->event_priority, "dhcp4-resend-timer", true);
+                if (client->bootp)
+                {
+                        log_dhcp_client(client, "using the bootp path for assignment");
+
+                        client->start_delay = 0;
+                        (void) event_source_disable(client->timeout_resend);
+                        client->receive_message = sd_event_source_disable_unref(client->receive_message);
+                        client->fd = safe_close(client->fd);
+                        client->state = DHCP_STATE_BOUND;
+                        client->attempt = 0;
+
+                        client->last_addr = client->lease->address;
+
+                        r = client_set_lease_timeouts(client);
+                        if (r < 0) {
+                                log_dhcp_client(client, "could not set lease timeouts");
+                                goto error;
+                        }
+
+                        r = dhcp_network_bind_udp_socket(client->ifindex, client->lease->address, client->port, client->ip_service_type);
+                        if (r < 0) {
+                                log_dhcp_client(client, "could not bind UDP socket");
+                                goto error;
+                        }
+
+                        client->fd = r;
+
+                        client_initialize_io_events(client, client_receive_message_udp);
+
+                        client_notify(client, SD_DHCP_CLIENT_EVENT_IP_ACQUIRE);
+                } else {
+                        r = event_reset_time(client->event, &client->timeout_resend,
+                                             CLOCK_BOOTTIME,
+                                             0, 0,
+                                             client_timeout_resend, client,
+                                             client->event_priority, "dhcp4-resend-timer", true);
+                }
                 break;
 
         case DHCP_STATE_REBOOTING:
