@@ -1496,7 +1496,7 @@ static int client_handle_offer(sd_dhcp_client *client, DHCPMessage *offer, size_
         }
 
         r = dhcp_option_parse(offer, len, dhcp_lease_parse_options, lease, NULL);
-        if (r != DHCP_OFFER) {
+        if (r != DHCP_OFFER && !client->bootp) {
                 log_dhcp_client(client, "received message was not an OFFER, ignoring");
                 return -ENOMSG;
         }
