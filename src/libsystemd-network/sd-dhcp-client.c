@@ -1487,7 +1487,7 @@ static int client_parse_message(
         switch (client->state) {
         case DHCP_STATE_SELECTING:
                 if (r == DHCP_ACK) {
-                        if (!client->rapid_commit)
+                        if (!client->rapid_commit && !client->bootp)
                                 return log_dhcp_client_errno(client, SYNTHETIC_ERRNO(ENOMSG),
                                                              "received unexpected ACK, ignoring.");
                         if (!lease->rapid_commit)
