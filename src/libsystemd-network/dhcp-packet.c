@@ -14,7 +14,7 @@
 
 #define DHCP_CLIENT_MIN_OPTIONS_SIZE            312
 
-static int bootp_message_init(
+int bootp_message_init(
                 DHCPMessage *message,
                 uint8_t op,
                 uint32_t xid,
