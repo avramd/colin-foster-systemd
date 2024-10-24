@@ -25,9 +25,6 @@ int bootp_message_init(
                 size_t optlen,
                 size_t *optoffset) {
 
-        size_t offset = 0;
-        int r;
-
         assert(IN_SET(op, BOOTREQUEST, BOOTREPLY));
         assert(chaddr || hlen == 0);
 
