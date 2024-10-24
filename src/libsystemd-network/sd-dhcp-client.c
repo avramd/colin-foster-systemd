@@ -785,22 +785,13 @@ static int client_message_init(
         if (client->request_broadcast || client->arp_type != ARPHRD_ETHER)
                 packet->dhcp.flags = htobe16(0x8000);
 
-        /* Some DHCP servers will refuse to issue an DHCP lease if the Client
-           Identifier option is not set */
-        r = dhcp_option_append(&packet->dhcp, optlen, &optoffset, 0,
-                               SD_DHCP_OPTION_CLIENT_IDENTIFIER,
-                               client->client_id.size,
-                               client->client_id.raw);
-        if (r < 0)
-                return r;
-
         if (!client->bootp) {
                 /* Some DHCP servers will refuse to issue an DHCP lease if the Client
                    Identifier option is not set */
                 r = dhcp_option_append(&packet->dhcp, optlen, &optoffset, 0,
                                        SD_DHCP_OPTION_CLIENT_IDENTIFIER,
-                                       client->client_id_len,
-                                       &client->client_id);
+                                       client->client_id.size,
+                                       client->client_id.raw);
                 if (r < 0)
                         return r;
         }
