@@ -1472,7 +1472,9 @@ static int client_parse_message(
         }
 
         r = dhcp_option_parse(message, len, dhcp_lease_parse_options, lease, &error_message);
-        if (r < 0)
+        if (r == -ENOMSG && client->bootp)
+                log_dhcp_client(client, "No DHCP options found in bootp message, continuing.");
+        else if (r < 0)
                 return log_dhcp_client_errno(client, r, "Failed to parse DHCP options, ignoring: %m");
 
         switch (client->state) {
@@ -1495,8 +1497,11 @@ static int client_parse_message(
                         if (lease->lifetime == 0 && client->fallback_lease_lifetime > 0)
                                 lease->lifetime = client->fallback_lease_lifetime;
                 } else
-                        return log_dhcp_client_errno(client, SYNTHETIC_ERRNO(ENOMSG),
-                                                     "received unexpected message, ignoring.");
+                        if (client->bootp)
+                                log_dhcp_client(client, "Ignoring return value %d for bootp message", r);
+                        else
+                                return log_dhcp_client_errno(client, SYNTHETIC_ERRNO(ENOMSG),
+                                                             "received unexpected message, ignoring.");
 
                 break;
 
@@ -1523,6 +1528,9 @@ static int client_parse_message(
 
         lease->next_server = message->siaddr;
         lease->address = message->yiaddr;
+
+        if (client->bootp)
+                lease->lifetime = USEC_INFINITY;
 
         if (lease->address == 0 ||
             lease->server_address == 0 ||
