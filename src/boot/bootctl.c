@@ -157,7 +157,7 @@ static int print_loader_or_stub_path(void) {
         } else {
                 assert(arg_print_stub_path);
 
-                r = efi_stub_get_device_part_uuid(&uuid);
+                r = efi_loader_get_device_part_uuid(&uuid);
                 if (r == -ENOENT)
                         return log_error_errno(r, "No stub partition UUID passed.");
                 if (r < 0)

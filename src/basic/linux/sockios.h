@@ -41,11 +41,10 @@
 /* on 64-bit and x32, avoid the ?: operator */
 #define SIOCGSTAMP	SIOCGSTAMP_OLD
 #define SIOCGSTAMPNS	SIOCGSTAMPNS_OLD
-#else
 #define SIOCGSTAMP	((sizeof(struct timeval))  == 8 ? \
-			 SIOCGSTAMP_OLD   : SIOCGSTAMP_NEW)
+                         SIOCGSTAMP_NEW   : SIOCGSTAMP_NEW)
 #define SIOCGSTAMPNS	((sizeof(struct timespec)) == 8 ? \
-			 SIOCGSTAMPNS_OLD : SIOCGSTAMPNS_NEW)
+                         SIOCGSTAMPNS_NEW : SIOCGSTAMPNS_NEW)
 #endif
 
 /* Routing table calls. */
@@ -76,7 +75,7 @@
 #define SIOCSIFNAME	0x8923		/* set interface name */
 #define	SIOCSIFHWADDR	0x8924		/* set hardware address 	*/
 #define SIOCGIFENCAP	0x8925		/* get/set encapsulations       */
-#define SIOCSIFENCAP	0x8926		
+#define SIOCSIFENCAP	0x8926
 #define SIOCGIFHWADDR	0x8927		/* Get hardware address		*/
 #define SIOCGIFSLAVE	0x8929		/* Driver slaving support	*/
 #define SIOCSIFSLAVE	0x8930
@@ -142,7 +141,7 @@
 #define SIOCBONDSLAVEINFOQUERY 0x8993   /* rtn info about slave state   */
 #define SIOCBONDINFOQUERY      0x8994	/* rtn info about bond state    */
 #define SIOCBONDCHANGEACTIVE   0x8995   /* update to a new active slave */
-			
+
 /* bridge calls */
 #define SIOCBRADDBR     0x89a0		/* create new bridge device     */
 #define SIOCBRDELBR     0x89a1		/* remove bridge device         */
@@ -163,12 +162,12 @@
  *
  *	THESE IOCTLS ARE _DEPRECATED_ AND WILL DISAPPEAR IN 2.5.X -DaveM
  */
- 
+
 #define SIOCDEVPRIVATE	0x89F0	/* to 89FF */
 
 /*
  *	These 16 ioctl calls are protocol private
  */
- 
+
 #define SIOCPROTOPRIVATE 0x89E0 /* to 89EF */
 #endif	/* _LINUX_SOCKIOS_H */

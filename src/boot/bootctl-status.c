@@ -509,7 +509,7 @@ int verb_status(int argc, char *argv[], void *userdata) {
                                 print_yes_no_line(i == 0, FLAGS_SET(stub_features, stub_flags[i].flag), stub_flags[i].name);
 
                         sd_id128_t stub_partition_uuid;
-                        bool have_stub_partition_uuid = efi_stub_get_device_part_uuid(&stub_partition_uuid) >= 0;
+                        bool have_stub_partition_uuid = efi_loader_get_device_part_uuid(&stub_partition_uuid) >= 0;
 
                         if (have_stub_partition_uuid && (!(!sd_id128_is_null(esp_uuid) && sd_id128_equal(esp_uuid, stub_partition_uuid)) &&
                                                          !(!sd_id128_is_null(xbootldr_uuid) && sd_id128_equal(xbootldr_uuid, stub_partition_uuid))))
