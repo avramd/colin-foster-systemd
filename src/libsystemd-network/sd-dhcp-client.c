@@ -116,6 +116,7 @@ struct sd_dhcp_client {
         sd_dhcp_lease *lease;
         usec_t start_delay;
         int ip_service_type;
+        bool bootp;
 
         /* Ignore ifindex when generating iaid. See dhcp_identifier_set_iaid(). */
         bool test_mode;
@@ -651,6 +652,19 @@ int sd_dhcp_client_set_fallback_lease_lifetime(sd_dhcp_client *client, uint32_t 
         return 0;
 }
 
+int sd_dhcp_client_set_bootp(sd_dhcp_client *client, int bootp) {
+        assert_return(client, -EINVAL);
+        assert_return(!sd_dhcp_client_is_running(client), -EBUSY);
+
+        client->bootp = bootp;
+
+        /* For BOOTP mode, we don't want to send any request options by default. */
+        set_free(client->req_opts);
+        client->req_opts = NULL;
+
+        return 0;
+}
+
 static int client_notify(sd_dhcp_client *client, int event) {
         assert(client);
 
@@ -759,9 +773,15 @@ static int client_message_init(
         if (!packet)
                 return -ENOMEM;
 
-        r = dhcp_message_init(&packet->dhcp, BOOTREQUEST, client->xid, type,
-                              client->arp_type, client->hw_addr.length, client->hw_addr.bytes,
-                              optlen, &optoffset);
+        if (client->bootp) {
+                optoffset = 0;
+                r = bootp_message_init(&packet->dhcp, BOOTREQUEST, client->xid, client->arp_type,
+                                       client->hw_addr.length, client->hw_addr.bytes);
+        } else
+                r = dhcp_message_init(&packet->dhcp, BOOTREQUEST, client->xid, type,
+                                      client->arp_type, client->hw_addr.length, client->hw_addr.bytes,
+                                      optlen, &optoffset);
+
         if (r < 0)
                 return r;
 
@@ -811,15 +831,17 @@ static int client_message_init(
                 client->client_id_len = sizeof(client->client_id.type) + sizeof(client->client_id.ns.iaid) + duid_len;
         }
 
-        /* Some DHCP servers will refuse to issue an DHCP lease if the Client
-           Identifier option is not set */
-        if (client->client_id_len) {
-                r = dhcp_option_append(&packet->dhcp, optlen, &optoffset, 0,
-                                       SD_DHCP_OPTION_CLIENT_IDENTIFIER,
-                                       client->client_id_len,
-                                       &client->client_id);
-                if (r < 0)
-                        return r;
+        if (!client->bootp) {
+                /* Some DHCP servers will refuse to issue an DHCP lease if the Client
+                Identifier option is not set */
+                if (client->client_id_len) {
+                        r = dhcp_option_append(&packet->dhcp, optlen, &optoffset, 0,
+                                        SD_DHCP_OPTION_CLIENT_IDENTIFIER,
+                                        client->client_id_len,
+                                        &client->client_id);
+                        if (r < 0)
+                                return r;
+                }
         }
 
         /* RFC2131 section 3.5:
@@ -835,7 +857,7 @@ static int client_message_init(
            MAY contain the Parameter Request List option. */
         /* NOTE: in case that there would be an option to do not send
          * any PRL at all, the size should be checked before sending */
-        if (!set_isempty(client->req_opts) && type != DHCP_RELEASE) {
+        if (!set_isempty(client->req_opts) && type != DHCP_RELEASE && !client->bootp) {
                 _cleanup_free_ uint8_t *opts = NULL;
                 size_t n_opts, i = 0;
                 void *val;
@@ -883,7 +905,7 @@ static int client_message_init(
          */
         /* RFC7844 section 3:
            SHOULD NOT contain any other option. */
-        if (!client->anonymize && IN_SET(type, DHCP_DISCOVER, DHCP_REQUEST)) {
+        if (!client->bootp && !client->anonymize && IN_SET(type, DHCP_DISCOVER, DHCP_REQUEST)) {
                 be16_t max_size = htobe16(MIN(client->mtu - DHCP_IP_UDP_SIZE, (uint32_t) UINT16_MAX));
                 r = dhcp_option_append(&packet->dhcp, optlen, &optoffset, 0,
                                        SD_DHCP_OPTION_MAXIMUM_MESSAGE_SIZE,
@@ -1026,7 +1048,7 @@ static int client_send_discover(sd_dhcp_client *client) {
          */
         /* RFC7844 section 3:
            SHOULD NOT contain any other option. */
-        if (!client->anonymize && client->last_addr != INADDR_ANY) {
+        if (!client->bootp && !client->anonymize && client->last_addr != INADDR_ANY) {
                 r = dhcp_option_append(&discover->dhcp, optlen, &optoffset, 0,
                                        SD_DHCP_OPTION_REQUESTED_IP_ADDRESS,
                                        4, &client->last_addr);
@@ -1034,14 +1056,33 @@ static int client_send_discover(sd_dhcp_client *client) {
                         return r;
         }
 
-        r = client_append_common_discover_request_options(client, discover, &optoffset, optlen);
-        if (r < 0)
-                return r;
+        if (!client->bootp) {
+                r = client_append_common_discover_request_options(client, discover, &optoffset, optlen);
+                if (r < 0)
+                        return r;
+        }
 
         r = dhcp_option_append(&discover->dhcp, optlen, &optoffset, 0,
                                SD_DHCP_OPTION_END, 0, NULL);
         if (r < 0)
                 return r;
+
+       /* RFC1542 section 3.5:
+         * if the client has no information to communicate to the server,
+         * the octet immediately following the magic cookie SHOULD be set
+         * to the "End" tag (255) and the remaining octets of the 'vend'
+         * field SHOULD be set to zero.
+         */
+        /* Use this RFC, along with the fact that some BOOTP servers require
+         * a 64-byte vend field, to suggest that we always zero and send 64
+         * bytes in the options field. The first four bites are the "magic"
+         * field, so this only needs to add 60 bytes.
+         */
+        if (client->bootp)
+                if (optoffset < 60 && optlen >= 60) {
+                        memset(&discover->dhcp.options[optoffset], 0, optlen - optoffset);
+                        optoffset = 60;
+                }
 
         /* We currently ignore:
            The client SHOULD wait a random time between one and ten seconds to
@@ -1465,9 +1506,27 @@ static int client_handle_offer(sd_dhcp_client *client, DHCPMessage *offer, size_
 
         r = dhcp_option_parse(offer, len, dhcp_lease_parse_options, lease, NULL);
         if (r != DHCP_OFFER) {
-                log_dhcp_client(client, "received message was not an OFFER, ignoring");
-                return -ENOMSG;
+                if (r == -ENOMSG && client->bootp) {
+                        // Treat a non-DHCP BOOTREPLY like a DHCP ACK, so keep processing
+                        log_dhcp_client(client, "BOOTREPLY received");
+                        r = DHCP_ACK;
+                } else {
+                        log_dhcp_client(client, "received message was not an OFFER, ignoring");
+                        return -ENOMSG;
+                }
         }
+
+        if (client->bootp) {
+                // This was USEC_INFINITY in systemd v258, but that's a long unsigned int; casting doesn't seem like a good idea
+                lease->lifetime = UINT32_MAX;
+                log_dhcp_client(client, "BOOTP identified, using infinite lease. BOOTP siaddr=(%#x), DHCP Server Identifier=(%#x)",
+                        offer->siaddr,
+                        lease->server_address);
+
+                lease->server_address = offer->siaddr || lease->server_address;
+                lease->next_server = 0;
+        } else
+                lease->next_server = offer->siaddr;
 
         lease->next_server = offer->siaddr;
         lease->address = offer->yiaddr;
@@ -1478,7 +1537,11 @@ static int client_handle_offer(sd_dhcp_client *client, DHCPMessage *offer, size_
         if (lease->address == 0 ||
             lease->server_address == 0 ||
             lease->lifetime == 0) {
-                log_dhcp_client(client, "received lease lacks address, server address or lease lifetime, ignoring");
+                log_dhcp_client(client, "received lease lacks address(%#x), server address(%#x) or lease lifetime(%#llx), ignoring.",
+                        lease->address,
+                        lease->server_address,
+                        (unsigned long long) lease->lifetime
+                );
                 return -ENOMSG;
         }
 
@@ -1545,38 +1608,46 @@ static int client_handle_ack(sd_dhcp_client *client, DHCPMessage *ack, size_t le
         _cleanup_free_ char *error_message = NULL;
         int r;
 
-        r = dhcp_lease_new(&lease);
-        if (r < 0)
-                return r;
-
-        if (client->client_id_len) {
-                r = dhcp_lease_set_client_id(lease,
-                                             (uint8_t *) &client->client_id,
-                                             client->client_id_len);
+        // For BOOTP packets, we already did all this when processing it as an offer
+        if (client->bootp)
+                lease = client->lease;
+        else {
+                r = dhcp_lease_new(&lease);
                 if (r < 0)
                         return r;
+
+                if (client->client_id_len) {
+                        r = dhcp_lease_set_client_id(lease,
+                                                (uint8_t *) &client->client_id,
+                                                client->client_id_len);
+                        if (r < 0)
+                                return r;
+                }
+
+                r = dhcp_option_parse(ack, len, dhcp_lease_parse_options, lease, &error_message);
+                if (r == DHCP_NAK) {
+                        log_dhcp_client(client, "NAK: %s", strna(error_message));
+                        return -EADDRNOTAVAIL;
+                }
+
+                if (r != DHCP_ACK) {
+                        log_dhcp_client(client, "received message was not an ACK, ignoring");
+                        return -ENOMSG;
+                }
+
+                lease->next_server = ack->siaddr;
+
+                lease->address = ack->yiaddr;
         }
-
-        r = dhcp_option_parse(ack, len, dhcp_lease_parse_options, lease, &error_message);
-        if (r == DHCP_NAK) {
-                log_dhcp_client(client, "NAK: %s", strna(error_message));
-                return -EADDRNOTAVAIL;
-        }
-
-        if (r != DHCP_ACK) {
-                log_dhcp_client(client, "received message was not an ACK, ignoring");
-                return -ENOMSG;
-        }
-
-        lease->next_server = ack->siaddr;
-
-        lease->address = ack->yiaddr;
 
         if (lease->address == INADDR_ANY ||
             lease->server_address == INADDR_ANY ||
             lease->lifetime == 0) {
-                log_dhcp_client(client, "received lease lacks address, server "
-                                "address or lease lifetime, ignoring");
+                log_dhcp_client(client, "received lease lacks address(%#x), server address(%#x) or lease lifetime(%#llx), ignoring.",
+                        lease->address,
+                        lease->server_address,
+                        (unsigned long long) lease->lifetime
+                );
                 return -ENOMSG;
         }
 
@@ -1729,7 +1800,10 @@ static int client_handle_message(sd_dhcp_client *client, DHCPMessage *message, i
                                      0, 0,
                                      client_timeout_resend, client,
                                      client->event_priority, "dhcp4-resend-timer", true);
-                break;
+
+                // Treat a non-DHCP BOOTREPLY like a DHCP ACK, so keep processing
+                if (! client->bootp)
+                        break;
 
         case DHCP_STATE_REBOOTING:
         case DHCP_STATE_REQUESTING:
