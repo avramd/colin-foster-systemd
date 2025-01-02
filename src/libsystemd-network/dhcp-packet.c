@@ -14,6 +14,33 @@
 
 #define DHCP_CLIENT_MIN_OPTIONS_SIZE            312
 
+int bootp_message_init(DHCPMessage *message, uint8_t op, uint32_t xid, uint16_t arp_type, uint8_t hlen, const uint8_t *chaddr) {
+        assert(IN_SET(op, BOOTREQUEST, BOOTREPLY));
+        assert(chaddr || hlen == 0);
+
+        message->op = op;
+        message->htype = arp_type;
+
+        /* RFC2131 section 4.1.1:
+           The client MUST include its hardware address in the ’chaddr’ field, if
+           necessary for delivery of DHCP reply messages.
+
+           RFC 4390 section 2.1:
+           A DHCP client, when working over an IPoIB interface, MUST follow the
+           following rules:
+           "htype" (hardware address type) MUST be 32 [ARPPARAM].
+           "hlen" (hardware address length) MUST be 0.
+           "chaddr" (client hardware address) field MUST be zeroed.
+         */
+        message->hlen = arp_type == ARPHRD_INFINIBAND ? 0 : hlen;
+        memcpy_safe(message->chaddr, chaddr, message->hlen);
+
+        message->xid = htobe32(xid);
+        message->magic = htobe32(DHCP_MAGIC_COOKIE);
+
+        return 0;
+}
+
 int dhcp_message_init(
                 DHCPMessage *message,
                 uint8_t op,
